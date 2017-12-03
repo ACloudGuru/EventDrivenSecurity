@@ -1,0 +1,164 @@
+
+Resources:
+  VPC:
+    Type: "AWS::EC2::VPC"
+    Properties:
+      CidrBlock: "10.0.0.0/16"
+      Tags:
+        - Key: Name
+          Value: Lesson4
+  IGW:
+    Type: "AWS::EC2::InternetGateway"
+  GatewayAttach:
+    Type: "AWS::EC2::VPCGatewayAttachment"
+    Properties:
+      InternetGatewayId: !Ref IGW
+      VpcId: !Ref VPC
+  SubnetA:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      AvailabilityZone: !Select [0, !GetAZs ]
+      CidrBlock: "10.0.1.0/24"
+      MapPublicIpOnLaunch: true
+      VpcId: !Ref VPC
+  SubnetB:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      AvailabilityZone: !Select [1, !GetAZs ]
+      CidrBlock: "10.0.2.0/24"
+      MapPublicIpOnLaunch: true
+      VpcId: !Ref VPC
+  RouteTablePublic:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref VPC
+  RouteDefaultPublic:
+    Type: "AWS::EC2::Route"
+    DependsOn: GatewayAttach
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref IGW
+      RouteTableId: !Ref RouteTablePublic
+  SubnetRouteTableAssociationA:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref RouteTablePublic
+      SubnetId: !Ref SubnetA
+  SubnetRouteTableAssociationB:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      RouteTableId: !Ref RouteTablePublic
+      SubnetId: !Ref SubnetB
+  EC21:
+    Type : "AWS::EC2::Instance"
+    Properties:
+      ImageId : "ami-22ce4934"
+      InstanceType: "t2.nano"
+      SubnetId: !Ref SubnetA
+      SecurityGroupIds : [ !Ref SG1 ]
+      Tags:
+        - Key: Name
+          Value: test-1
+  EC22:
+    Type : "AWS::EC2::Instance"
+    Properties:
+      ImageId : "ami-22ce4934"
+      InstanceType: "t2.nano"
+      SubnetId: !Ref SubnetA
+      SecurityGroupIds : [ !Ref SG2 ]
+      Tags:
+        - Key: Name
+          Value: test-2
+  EC23:
+    Type : "AWS::EC2::Instance"
+    Properties:
+      ImageId : "ami-22ce4934"
+      InstanceType: "t2.nano"
+      SubnetId: !Ref SubnetA
+      SecurityGroupIds : [ !Ref SG3 ]
+      Tags:
+        - Key: Name
+          Value: test-3
+  EC24:
+    Type : "AWS::EC2::Instance"
+    Properties:
+      ImageId : "ami-22ce4934"
+      InstanceType: "t2.nano"
+      SubnetId: !Ref SubnetA
+      SecurityGroupIds : [ !Ref SG1 ]
+      Tags:
+        - Key: Name
+          Value: test-4
+  SG1:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: "test-group-1"
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        -
+          CidrIp: 0.0.0.0/0
+          IpProtocol: tcp
+          ToPort: "80"
+          FromPort: "80"
+        -
+          CidrIp: 0.0.0.0/0
+          IpProtocol: tcp
+          ToPort: "22"
+          FromPort: "22"
+      SecurityGroupEgress:
+        -
+          CidrIp: 0.0.0.0/0
+          ToPort: "-1"
+          IpProtocol: "-1"
+      Tags:
+        - Key: Name
+          Value: test-1
+  SG2:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: "test-group-2"
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        -
+          CidrIp: 0.0.0.0/0
+          IpProtocol: tcp
+          ToPort: "80"
+          FromPort: "80"
+        -
+          CidrIp: 0.0.0.0/0
+          IpProtocol: tcp
+          ToPort: "8080"
+          FromPort: "8080"
+      SecurityGroupEgress:
+        -
+          CidrIp: 0.0.0.0/0
+          ToPort: "-1"
+          IpProtocol: "-1"
+      Tags:
+        - Key: Name
+          Value: test-2
+  SG3:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: "test-group-2"
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        -
+          CidrIp: 0.0.0.0/0
+          IpProtocol: tcp
+          ToPort: "80"
+          FromPort: "80"
+        -
+          CidrIp: 1.2.3.4/32
+          IpProtocol: tcp
+          ToPort: "22"
+          FromPort: "22"
+      SecurityGroupEgress:
+        -
+          CidrIp: 0.0.0.0/0
+          ToPort: "-1"
+          IpProtocol: "-1"
+      Tags:
+        - Key: Name
+          Value: test-3
+  

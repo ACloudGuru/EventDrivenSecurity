@@ -1,0 +1,511 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "This template helps setup a WAF ACL to block IPs listed on the SANS Bad IP list.  It also sets up a Lambda function to help keep the WAF up-to-date with the current SANS list.   After creating a stack with this template you can manually initiate an update by performing a test run on the Lambda function.   IMPORTANT: This file is distributed on an AS IS BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.",
+  "Parameters": {},
+  "Resources": {
+    "LambdaRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "lambda.amazonaws.com"
+                ]
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "CloudWatchLogs",
+            "PolicyDocument": {
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": "logs:*",
+                  "Resource": "*"
+                }
+              ]
+            }
+          },
+          {
+            "PolicyName": "WAFGetChangeToken",
+            "PolicyDocument": {
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "waf:GetChangeToken",
+                    "waf:GetChangeTokenStatus"
+                  ],
+                  "Resource": "*"
+                }
+              ]
+            }
+          },
+          {
+            "PolicyName": "WAFGetAndUpdateIPSet",
+            "PolicyDocument": {
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "waf:GetIPSet",
+                    "waf:UpdateIPSet"
+                  ],
+                  "Resource": [
+                    {
+                      "Fn::Join": [
+                        "",
+                        [
+                          "arn:aws:waf::",
+                          {
+                            "Ref": "AWS::AccountId"
+                          },
+                          ":ipset/",
+                          {
+                            "Ref": "IPSet"
+                          }
+                        ]
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "597bafe3-cae1-436b-ad08-b112ef1e16a2"
+        }
+      }
+    },
+    "IPSet": {
+      "Type": "AWS::WAF::IPSet",
+      "Properties": {
+        "Name": "SANS IPs"
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "cc57f8bb-95e0-45e6-b1e5-88a60119d886"
+        }
+      }
+    },
+    "Rule": {
+      "Type": "AWS::WAF::Rule",
+      "Properties": {
+        "Name": "SANS Rule",
+        "MetricName": "sansRule",
+        "Predicates": [
+          {
+            "DataId": {
+              "Ref": "IPSet"
+            },
+            "Type": "IPMatch",
+            "Negated": "false"
+          }
+        ]
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "2a762ee1-e6bd-4499-b22d-6055c32e8399"
+        }
+      }
+    },
+    "WebACL": {
+      "Type": "AWS::WAF::WebACL",
+      "Properties": {
+        "Name": "WebACL",
+        "DefaultAction": {
+          "Type": "ALLOW"
+        },
+        "MetricName": "WebACL",
+        "Rules": [
+          {
+            "Action": {
+              "Type": "BLOCK"
+            },
+            "Priority": 1,
+            "RuleId": {
+              "Ref": "Rule"
+            }
+          }
+        ]
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "d2368b9a-f72d-4fa1-9a1f-8a4f44a38666"
+        }
+      }
+    },
+    "LambdaFunction": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Handler": "index.handler",
+        "Role": {
+          "Fn::GetAtt": [
+            "LambdaRole",
+            "Arn"
+          ]
+        },
+        "Runtime": "python2.7",
+        "MemorySize": "512",
+        "Timeout": "60",
+        "Code": {
+          "ZipFile": {
+            "Fn::Join": [
+              "",
+              [
+                "#!/usr/bin/python\r\n",
+                "\r\n",
+                "import urllib2\r\n",
+                "import re\r\n",
+                "import boto3\r\n",
+                "from StringIO import StringIO\r\n",
+                "import gzip\r\n",
+                "\r\n",
+                "ip_set_id = \"",
+                {
+                  "Ref": "IPSet"
+                },
+                "\"\r\n",
+                "url = \"https://isc.sans.edu/block.txt\"\r\n",
+                "\r\n",
+                "waf_client = boto3.client('waf')\r\n",
+                "\r\n",
+                "#\r\n",
+                "# Source the bad IPs from the SANS service.  \r\n",
+                "#\r\n",
+                "def getSansBadIps(url):\r\n",
+                "\r\n",
+                "\t# Uncomment for testing...\r\n",
+                "\t#return ['142.77.69.0/24', '182.100.27.0/24', '61.240.144.0/24', '222.174.5.0/24', \r\n",
+                "\t#'222.186.21.0/24', '117.34.74.0/24', '62.138.6.0/24', '209.126.127.0/24', \r\n",
+                "\t#'69.64.57.0/24', '62.138.3.0/24', '209.126.111.0/24', '172.93.97.0/24', \r\n",
+                "\t#'91.213.33.0/24', '119.189.108.0/24', '83.220.172.0/24', '14.32.80.0/24', \r\n",
+                "\t#'14.43.137.0/24', '118.39.182.0/24', '210.218.188.0/24', '39.67.160.0/24']\r\n",
+                "\r\n",
+                "\tret = []\r\n",
+                "\theaders = {'User-Agent': 'lambda-python-sec-script',\r\n",
+                "\t\t\t   'Accept-encoding': 'gzip'}\r\n",
+                "\t\r\n",
+                "\ttry:\r\n",
+                "\t\trequest = urllib2.Request(url, headers=headers)\r\n",
+                "\t\tresponse = urllib2.urlopen(request)\r\n",
+                "\t\t\r\n",
+                " \texcept urllib2.HTTPError, e:\r\n",
+                " \t\tprint(\"Failed to get get web resource - {}.\".format(e.code))\r\n",
+                " \t\treturn False\r\n",
+                " \t\t\r\n",
+                " \telse:\r\n",
+                " \t\r\n",
+                " \t\tif (response.info().get('Content-Encoding') == 'gzip'):\r\n",
+                " \t\t\tbuf = StringIO( response.read())\r\n",
+                " \t\t\tf = gzip.GzipFile(fileobj=buf)\r\n",
+                " \t\t\tcontents = f.read()\t\r\n",
+                "\t\telse:\r\n",
+                "\t\t\tcontents = response.read()\r\n",
+                "\t\t\r\n",
+                "\t\t#print(contents)\r\n",
+                "\t\tlines = contents.split(\"\\n\")\r\n",
+                "\r\n",
+                "\t\tfor line in lines:\r\n",
+                "\t\t\tif (len(line) > 0):\r\n",
+                "\t\t\t\tif (line[0] != \"#\"):\r\n",
+                "\t\t\t\t\tparts = line.split(\"\t\")\r\n",
+                "\t\t\t\t\tif re.match(\"(?:\\d{1,3}\\.){3}\\d{1,3}(?:/\\d\\d?)?\", parts[0]): \r\n",
+                "\t\t\t\t\t\tret.append(\"{}/{}\".format(parts[0], parts[2]))\r\n",
+                "\t\t\r\n",
+                "\t\treturn ret\r\n",
+                "#\r\n",
+                "# Source the values from the current WAF IPSet  \r\n",
+                "#\r\n",
+                "def getCurrentIPSet(ip_set_id):\r\n",
+                "\r\n",
+                "\tret = []\r\n",
+                "\t\r\n",
+                "\ttry:\r\n",
+                "\t\tip_set = waf_client.get_ip_set(\r\n",
+                "\t\t\tIPSetId=ip_set_id\r\n",
+                "\t\t)\r\n",
+                "\t\t\r\n",
+                "\texcept:\r\n",
+                "\t\tprint(\"Failed to get get IPSet\")\r\n",
+                "\t\treturn False\r\n",
+                "\t\t\r\n",
+                "\telse:\r\n",
+                "\t\tfor item in  ip_set['IPSet']['IPSetDescriptors']:\r\n",
+                "\t\t\tret.append(item['Value'])\r\n",
+                "\t\r\n",
+                "\treturn ret\r\n",
+                "\r\n",
+                "#\r\n",
+                "# Format a dict for the update statment  \r\n",
+                "#\r\n",
+                "def createUpdatesList( cidr_to_remove, cidr_to_add ):\r\n",
+                "\t\r\n",
+                "\tret = []\r\n",
+                "\tfor cidr in cidr_to_remove:\r\n",
+                "\t\tret.append( {'Action': 'DELETE','IPSetDescriptor': {'Type': 'IPV4', 'Value': cidr}} )\r\n",
+                "\r\n",
+                "\tfor cidr in cidr_to_add:\r\n",
+                "\t\tret.append( {'Action': 'INSERT','IPSetDescriptor': {'Type': 'IPV4', 'Value': cidr}} )    \r\n",
+                "\t\r\n",
+                "\treturn ret\r\n",
+                "\t \r\n",
+                "#\r\n",
+                "# Send update to AWS WAF  \r\n",
+                "#\r\n",
+                "def updateIPSet( IPSet, updatesList ):\r\n",
+                "\r\n",
+                "\tchange_token = waf_client.get_change_token()\r\n",
+                "\r\n",
+                "\tprint(\"Change token: {}\".format(change_token['ChangeToken']))\r\n",
+                "\t\r\n",
+                "\tresponse_token = waf_client.update_ip_set(\r\n",
+                "\t\tIPSetId=IPSet,\r\n",
+                "\t\tChangeToken=change_token['ChangeToken'],\r\n",
+                "\t\tUpdates=updatesList\r\n",
+                "\t)\r\n",
+                "\t\r\n",
+                "\treturn waf_client.get_change_token_status(ChangeToken=response_token['ChangeToken'])\r\n",
+                "\r\n",
+                "#\r\n",
+                "# Lambda Handler  \r\n",
+                "#\r\n",
+                "def handler( event, context ):\t\r\n",
+                "\r\n",
+                "\tprint(\"Starting update...\")\r\n",
+                "\t\r\n",
+                "\tsans_bad_ips = getSansBadIps(url)\r\n",
+                "\tprint(\"Found {} CIDRs from SANS\".format( len(sans_bad_ips) ))\r\n",
+                "\tprint(sans_bad_ips)\r\n",
+                "\r\n",
+                "\tcurrent_ip_set = getCurrentIPSet(ip_set_id)\r\n",
+                "\tprint(\"Found {} CIDRs from current IPSet\".format( len(current_ip_set) ))\r\n",
+                "\tprint(current_ip_set)\r\n",
+                "\r\n",
+                "\tcidr_to_remove = [ i for i in current_ip_set if i not in sans_bad_ips]\r\n",
+                "\tprint(\"There are {} CIDRs to REMOVE from current IPSet\".format( len(cidr_to_remove) ))\r\n",
+                "\tprint(cidr_to_remove)\r\n",
+                "\r\n",
+                "\tcidr_to_add = [ i for i in sans_bad_ips if i not in current_ip_set]\r\n",
+                "\tprint(\"There are {} CIDRs to add ADD to current IPSet\".format( len(cidr_to_add) ))\r\n",
+                "\tprint(cidr_to_add)\r\n",
+                "\r\n",
+                "\tupdatesList = (createUpdatesList(cidr_to_remove, cidr_to_add))\r\n",
+                "\r\n",
+                "\tif len(updatesList):\r\n",
+                "\t\tprint(\"Sending update to WAF...\")\r\n",
+                "\t\treturn(updateIPSet( ip_set_id, updatesList ))\r\n",
+                "\telse:\r\n",
+                "\t\treturn(\"No changes to be made.\")\r\n",
+                "\tprint(\"Done.\")\r\n",
+                "\t\r\n",
+                "handler(False, False)",
+                ""
+              ]
+            ]
+          }
+        }
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "a83c0a80-d2a3-4007-b1ad-15814d8d9d34"
+        }
+      }
+    },
+    "EventsRule": {
+      "Type": "AWS::Events::Rule",
+      "Properties": {
+        "Description": "WAF Reputation Lists",
+        "ScheduleExpression": "rate(1 hour)",
+        "Targets": [
+          {
+            "Arn": {
+              "Fn::GetAtt": [
+                "LambdaFunction",
+                "Arn"
+              ]
+            },
+            "Id": "LambdaFunction"
+          }
+        ]
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "265e0f6b-7092-420d-89e0-a28791020b54"
+        }
+      }
+    },
+    "LambdaPermission": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "FunctionName": {
+          "Ref": "LambdaFunction"
+        },
+        "Action": "lambda:InvokeFunction",
+        "Principal": "events.amazonaws.com",
+        "SourceArn": {
+          "Fn::GetAtt": [
+            "EventsRule",
+            "Arn"
+          ]
+        }
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "d3a1b9bb-4f5b-42a0-a897-d3020a4640e2"
+        }
+      }
+    }
+  },
+  "Metadata": {
+    "AWS::CloudFormation::Designer": {
+      "597bafe3-cae1-436b-ad08-b112ef1e16a2": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": -150,
+          "y": 210
+        },
+        "z": 1,
+        "embeds": [],
+        "isrelatedto": [
+          "84bcef5a-5c10-4a03-a889-6429d8885093",
+          "6578672d-51cf-4e2c-b1d7-ebdd8888fcac",
+          "51ad7247-5980-4cbf-88dc-a1ab76760378",
+          "ec976c87-1b44-4f00-917d-4bc2257bd8a2",
+          "adbcf162-4f38-4bfc-89f6-c92877744982",
+          "13d577aa-2bed-4213-9877-82a71f35cae7",
+          "ac64f0ef-1b9e-4553-aac8-5e438b3e1b1e",
+          "e9109b13-a8c6-4c0c-86d7-320a7dc34dc5",
+          "27bff00f-be94-43af-81d6-b26310c0e015",
+          "8077e411-7a06-4b55-9620-3c99145ca0ec",
+          "36e910af-cf5c-4eaa-a20f-2cdbe9fea82c",
+          "9a183b42-515b-4d9f-a7d1-dbf5bad4da39",
+          "080975e4-118d-4cb2-bed5-c6612232f018",
+          "46141c8b-d0a8-4ee8-a1b3-7d5102902441",
+          "5091e4b3-1959-46bc-a451-7112b5d2049a",
+          "cc57f8bb-95e0-45e6-b1e5-88a60119d886"
+        ]
+      },
+      "cc57f8bb-95e0-45e6-b1e5-88a60119d886": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": -30,
+          "y": 450
+        },
+        "z": 1,
+        "embeds": []
+      },
+      "2a762ee1-e6bd-4499-b22d-6055c32e8399": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": 90,
+          "y": 450
+        },
+        "z": 1,
+        "embeds": [],
+        "isrelatedto": [
+          "cc57f8bb-95e0-45e6-b1e5-88a60119d886"
+        ]
+      },
+      "d2368b9a-f72d-4fa1-9a1f-8a4f44a38666": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": 210,
+          "y": 450
+        },
+        "z": 1,
+        "embeds": [],
+        "isrelatedto": [
+          "2a762ee1-e6bd-4499-b22d-6055c32e8399"
+        ]
+      },
+      "329d6fc2-a903-4020-91b0-a11d9cb14391": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": -140,
+          "y": 330
+        },
+        "z": 1,
+        "embeds": [],
+        "isrelatedto": [
+          "597bafe3-cae1-436b-ad08-b112ef1e16a2"
+        ]
+      },
+      "265e0f6b-7092-420d-89e0-a28791020b54": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": 90,
+          "y": 210
+        },
+        "z": 1,
+        "embeds": [],
+        "isrelatedto": [
+          "329d6fc2-a903-4020-91b0-a11d9cb14391",
+          "a83c0a80-d2a3-4007-b1ad-15814d8d9d34"
+        ]
+      },
+      "d3a1b9bb-4f5b-42a0-a897-d3020a4640e2": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": -30,
+          "y": 210
+        },
+        "z": 1,
+        "embeds": [],
+        "isassociatedwith": [
+          "329d6fc2-a903-4020-91b0-a11d9cb14391",
+          "a83c0a80-d2a3-4007-b1ad-15814d8d9d34"
+        ],
+        "isrelatedto": [
+          "265e0f6b-7092-420d-89e0-a28791020b54"
+        ]
+      },
+      "a83c0a80-d2a3-4007-b1ad-15814d8d9d34": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": -30,
+          "y": 330
+        },
+        "z": 1,
+        "embeds": [],
+        "isrelatedto": [
+          "597bafe3-cae1-436b-ad08-b112ef1e16a2",
+          "cc57f8bb-95e0-45e6-b1e5-88a60119d886"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,312 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Metadata": {
+    "AWS::CloudFormation::Designer": {
+      "058e782b-15ea-4f62-a0b2-7121f90eccf8": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": 270,
+          "y": 60
+        },
+        "z": 1,
+        "embeds": [],
+        "isassociatedwith": [
+          "affde40e-045e-461d-b96c-2ca0e22bb458"
+        ],
+        "dependson": [
+          "affde40e-045e-461d-b96c-2ca0e22bb458"
+        ],
+        "isrelatedto": [
+          "affde40e-045e-461d-b96c-2ca0e22bb458"
+        ]
+      },
+      "026dd516-5b3d-4bd3-b4ac-4b668b9c26ec": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": 60,
+          "y": 60
+        },
+        "z": 1,
+        "embeds": []
+      },
+      "affde40e-045e-461d-b96c-2ca0e22bb458": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": 180,
+          "y": 60
+        },
+        "z": 1,
+        "embeds": []
+      },
+      "c4b8dbf6-e7c1-4501-a477-8d557b506d8c": {
+        "source": {
+          "id": "058e782b-15ea-4f62-a0b2-7121f90eccf8"
+        },
+        "target": {
+          "id": "affde40e-045e-461d-b96c-2ca0e22bb458"
+        },
+        "z": 11
+      },
+      "5498c059-4f06-42a9-8807-e02097ff446f": {
+        "size": {
+          "width": 60,
+          "height": 60
+        },
+        "position": {
+          "x": 380,
+          "y": 180
+        },
+        "z": 1,
+        "embeds": [],
+        "dependson": [
+          "058e782b-15ea-4f62-a0b2-7121f90eccf8",
+          "026dd516-5b3d-4bd3-b4ac-4b668b9c26ec"
+        ],
+        "isrelatedto": [
+          "058e782b-15ea-4f62-a0b2-7121f90eccf8",
+          "026dd516-5b3d-4bd3-b4ac-4b668b9c26ec"
+        ]
+      },
+      "8d5e067b-1f97-4f53-97e4-8a9e51438796": {
+        "source": {
+          "id": "5498c059-4f06-42a9-8807-e02097ff446f"
+        },
+        "target": {
+          "id": "058e782b-15ea-4f62-a0b2-7121f90eccf8"
+        },
+        "z": 11
+      },
+      "9a2b70af-8e90-45c9-a4d0-63c65bb31a0c": {
+        "source": {
+          "id": "5498c059-4f06-42a9-8807-e02097ff446f"
+        },
+        "target": {
+          "id": "026dd516-5b3d-4bd3-b4ac-4b668b9c26ec"
+        },
+        "z": 2
+      }
+    }
+  },
+  "Resources": {
+    "RoleThatAllowsIAMAndLogsForLambda": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "ManagedPolicyArns": [
+          {
+            "Ref": "AllowIAMForLambdaPolicyManaged"
+          }
+        ]
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "058e782b-15ea-4f62-a0b2-7121f90eccf8"
+        }
+      },
+      "DependsOn": [
+        "AllowIAMForLambdaPolicyManaged"
+      ]
+    },
+    "DenyIAMAccessManaged": {
+      "Type": "AWS::IAM::ManagedPolicy",
+      "Properties": {
+        "Description": "DenyIAMAccessManaged",
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "DenyIAMAccessManaged",
+              "Effect": "Deny",
+              "Action": [
+                "iam:*"
+              ],
+              "Resource": "*"
+            }
+          ]
+        }
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "026dd516-5b3d-4bd3-b4ac-4b668b9c26ec"
+        }
+      }
+    },
+    "AllowIAMForLambdaPolicyManaged": {
+      "Type": "AWS::IAM::ManagedPolicy",
+      "Properties": {
+        "Description": "AllowIAMForLambdaPolicy",
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "AllowIAMForLambdaPolicy",
+              "Effect": "Allow",
+              "Action": [
+                "iam:AttachUserPolicy",
+                "iam:ListGroupsForUser",
+                "iam:PutUserPolicy",
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents"
+              ],
+              "Resource": "*"
+            }
+          ]
+        }
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "affde40e-045e-461d-b96c-2ca0e22bb458"
+        }
+      }
+    },
+    "RevokeIAMAccess": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "FunctionName": "RevokeIAMAccess",
+        "Handler": "index.handler",
+        "Role": {
+          "Fn::GetAtt": [
+            "RoleThatAllowsIAMAndLogsForLambda",
+            "Arn"
+          ]
+        },
+        "Runtime": "python2.7",
+        "Timeout": "30",
+        "Code": {
+          "ZipFile": {
+            "Fn::Join": [
+              "",
+              [
+                "import boto3\r\n",
+                "# import json\r\n",
+                "\r\n",
+                "denyPolicyArn = '",
+                {
+                  "Ref": "DenyIAMAccessManaged"
+                },
+                "'\r\n",
+                "adminGroup = '",
+                {
+                  "Ref": "AdminIAMGroup"
+                },
+                "'\r\n",
+                "\r\n",
+                "iam = boto3.resource('iam')\r\n",
+                "\r\n",
+                "def handler( event, context ):\r\n",
+                "\r\n",
+                "\t# print(\"Event data:\")\r\n",
+                "\t# print( json.dumps( event, sort_keys=True, indent=4, separators=(',', ': ') ) )\r\n",
+                "\r\n",
+                "\t# Test if the user type is IAM:\r\n",
+                "\tif event[\"detail\"][\"userIdentity\"][\"type\"] != 'IAMUser':\r\n",
+                "\t\tprint('User is not an IAMUser. Done.')\r\n",
+                "\t\treturn\r\n",
+                "\r\n",
+                "\telse:\r\n",
+                "\t\t# Get the userName of the user:\r\n",
+                "\t\tuserName = event[\"detail\"][\"userIdentity\"][\"userName\"]\r\n",
+                "\t\tprint(\"userName is {}\".format(userName))\r\n",
+                "\t\t\r\n",
+                "\t\t# Loop through the user's group memberships\r\n",
+                "\t\tuser = iam.User(userName)\r\n",
+                "\t\tgroup_iterator = user.groups.all()\r\n",
+                "\r\n",
+                "\t\t# If the user is a member of the 'admin' group all is good.\r\n",
+                "\t\tfor group in group_iterator:\r\n",
+                "\t\t\tif group.name == adminGroup:\r\n",
+                "\t\t\t\tprint(\"User {} is a member of the admin group '{}'. Done.\".format( userName, adminGroup ))\r\n",
+                "\t\t\t\treturn\r\n",
+                "\t\t\t\r\n",
+                "\t\t# The user is not a member of the 'admin' group...\r\n",
+                "\t\t# Revoke users access to IAM\r\n",
+                "\t\tprint (\"User '{}' is not a member of the admin group '{}'\".format( userName, adminGroup ))\r\n",
+                "\t\trevokeIamAccess(userName)\r\n",
+                "\r\n",
+                "# Attach the 'revoke' managed policy to the user.\t\t\r\n",
+                "def revokeIamAccess(userName):\r\n",
+                "\t\r\n",
+                "\tpolicy = iam.Policy(denyPolicyArn)\r\n",
+                "\r\n",
+                "\ttry:\r\n",
+                "\t\tprint(\"Attaching revoke policy '{}' to user '{}'.\".format( denyPolicyArn, userName ))\r\n",
+                "\t\tpolicy.attach_user( UserName=userName )\r\n",
+                "\texcept Exception as e:\r\n",
+                "\t\tprint(\"{}\".format(e) )\r\n",
+                "\t\trevokeIamAccessInline( userName )\r\n",
+                "\r\n",
+                "# Or add an inline policy to the user (if max managed policies reached.\r\n",
+                "def revokeIamAccessInline(userName):\t\t\r\n",
+                "\t\t\r\n",
+                "\tpolicyDocument = ('{'\r\n",
+                "        '\"Version\": \"2012-10-17\",'\r\n",
+                "        '\"Statement\": ['\r\n",
+                "        '{'\r\n",
+                "        '\"Effect\": \"Deny\",'\r\n",
+                "        '\"Action\": \"iam:*\",'\r\n",
+                "        '\"Resource\": \"*\"'\r\n",
+                "        '}'\r\n",
+                "        ']'\r\n",
+                "        '}')\r\n",
+                "\r\n",
+                "\ttry:\r\n",
+                "\t\tprint(\"Attching inline policy for user '{}'.\".format( userName ))\r\n",
+                "\t\tclient = boto3.client('iam')\r\n",
+                "\t\t\r\n",
+                "\t\tresponse = client.put_user_policy(\r\n",
+                "    \t\tUserName=userName,\r\n",
+                "    \t\tPolicyName='denyIamBlockedByEventSecurity',\r\n",
+                "    \t\tPolicyDocument = policyDocument\r\n",
+                "\t\t)\t\r\n",
+                "\texcept:\r\n",
+                "\t\tprint(\"Error: Unable to add inline policy to user '{}'.\".format( userName ))\r\n",
+                ""
+              ]
+            ]
+          }
+        }
+      },
+      "Metadata": {
+        "AWS::CloudFormation::Designer": {
+          "id": "5498c059-4f06-42a9-8807-e02097ff446f"
+        }
+      },
+      "DependsOn": [
+        "RoleThatAllowsIAMAndLogsForLambda",
+        "DenyIAMAccessManaged"
+      ]
+    }
+  },
+  "Outputs": {},
+  "Parameters": {
+    "AdminIAMGroup": {
+      "Description": "The name of the IAM group for admin users.",
+      "Type": "String",
+      "Default": "admin",
+      "MinLength": "1",
+      "MaxLength": "41",
+      "AllowedPattern": "[a-zA-Z0-9]*"
+    }
+  }
+}
