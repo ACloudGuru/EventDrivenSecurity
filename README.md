@@ -18,3 +18,6 @@ These files are distributed on an AS IS BASIS, WITHOUT WARRANTIES OR CONDITIONS 
 
 ##Dec 2017
 Ported to this new Repo
+
+##Dec 2017
+This course is currently withdrawn 
