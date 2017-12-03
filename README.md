@@ -1,6 +1,6 @@
 # event-driven-security
 
-Adrian Cantrill 2016
+Prepared by Adrian Cantrill 2016
 
 Lab files for A Cloud Guru - Event Driven Security
 
